@@ -1,0 +1,72 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net/url"
+	"sync"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+)
+
+var wg sync.WaitGroup
+
+func copy(sess *session.Session, other string, c chan string, i int) {
+
+	defer wg.Done()
+
+	svc := s3.New(sess)
+	for {
+		key := <-c
+		if key != "" {
+			_, err := svc.CopyObject(&s3.CopyObjectInput{Bucket: aws.String(other),
+				CopySource: aws.String(url.PathEscape("taskawsbucket-hosting" + "/" + key)), Key: aws.String(key)})
+			fmt.Printf("Worker %v copying %s \n", i, key)
+			if err != nil {
+				fmt.Print("error")
+
+			}
+
+		} else {
+			break
+		}
+
+	}
+
+}
+func test(ch chan string) {
+	fmt.Print(<-ch)
+}
+func main() {
+	source := flag.String("s", "", "BUCKET NAME")
+	profile := flag.String("p", "default", "PROFILE NAME")
+	det := flag.String("d", "", "DESTINATION BUCKET")
+
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Profile:           *profile,
+		SharedConfigState: session.SharedConfigEnable,
+	})
+
+	if err != nil {
+		fmt.Print("error")
+
+	}
+	ch := make(chan string)
+	svc := s3.New(sess)
+	//get s3 items to resp
+	resp, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{Bucket: aws.String(*source)})
+	//creates 10 workers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go copy(sess, *det, ch, i)
+
+	}
+	for _, item := range resp.Contents {
+		ch <- *item.Key
+	}
+	close(ch)
+
+	wg.Wait()
+}
