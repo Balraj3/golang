@@ -33,7 +33,7 @@ func main() {
 		values = append(values, temp[:])
 
 	}
-	results := make([]int, 2)
+	results := make([]int, q)
 	index := 0
 
 	for i := 0; i < 2; i++ {
